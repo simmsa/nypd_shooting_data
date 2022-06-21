@@ -1,0 +1,213 @@
+---
+title: "NYPD Shooting Incident Data Report"
+author: "Andrew Simms"
+date: '2022-05-21'
+output:
+    pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(forecast)
+```
+
+# Assignment Overview
+
+Import, tidy, and analyze the NYPD Shooting data incident dataset obtained. Be sure your project is reproducible and contains some visualization and analysis. You may use the data to do any analysis that is of interest to you. You should include at least two visualizations and one model. Be sure to identify any bias possible in the data and in your analysis.
+
+## Importing Data
+
+Data downloaded from data.gov: <https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic>
+
+Descriptions of columns is here: <https://data.cityofnewyork.us/Public-Safety/NYPD-Shooting-Incident-Data-Historic-/833y-fsy8>
+
+
+Use the `read.csv` function to import csv data into the dataframe `df`.
+
+```{r}
+df  <- read.csv("data/NYPD_Shooting_Incident_Data__Historic_.csv")
+```
+
+
+## Wrangling
+
+What data do we have?
+
+```{r}
+str(df)
+nrow(df)
+```
+
+## Cleaning
+
+Select columns with relevant data:
+
+```{r}
+df <- df %>%
+    select(OCCUR_DATE, OCCUR_TIME, BORO, VIC_RACE, VIC_SEX,
+           STATISTICAL_MURDER_FLAG)
+```
+
+Check Integrity:
+
+```{r}
+sum(is.na(df$OCCUR_DATE))
+sum(is.na(df$OCCUR_TIME))
+sum(is.na(df$BORO))
+sum(is.na(df$VIC_RACE))
+sum(is.na(df$VIC_SEX))
+sum(is.na(df$STATISTICAL_MURDER_FLAG))
+```
+
+### Ideas for interesting data analysis:
+
+#### Shootings by borough
+
+```{r}
+table(df["BORO"])
+```
+
+#### Shootings per year
+
+```{r}
+df$YEAR <- str_sub(df$OCCUR_DATE, -4)
+table(df["YEAR"])
+```
+
+#### Shootings Time of Day
+
+```{r}
+df$HOUR <- str_sub(df$OCCUR_TIME, 1, 2)
+table(df["HOUR"])
+```
+
+#### Shootings Time of Day Minute
+
+```{r}
+df$MINUTE <- str_sub(df$OCCUR_TIME, 4, 5)
+table(df["MINUTE"])
+```
+
+#### Shooting Victims by Race
+
+```{r}
+table(df["VIC_RACE"])
+```
+
+#### Shooting Victims by Sex
+
+```{r}
+table(df["VIC_SEX"])
+```
+
+#### Shooting defined as Murders
+
+```{r}
+table(df["STATISTICAL_MURDER_FLAG"])
+```
+
+## Tidying
+
+I found the data to be clean and thus tidying the data was unnecessary.
+
+## Visualizations
+
+### Shootings by Borough
+
+```{r}
+barplot(table(df["BORO"]), xlab = "Borough", ylab = "Shootings", space = 0,
+        main = "New York City Shootings by Borough", las = 2)
+boroTable <- table(df$BORO)
+boroTable
+boros <- data.frame(
+                    Borough = c("Bronx", "Brooklyn", "Manhattan", "Queens", "Staten Island"),
+                    Shootings = c(6701, 9734, 2922, 3532, 696)
+)
+theme_update(plot.title = element_text(hjust = 0.5))
+ggplot(boros, aes(x = Borough, y = Shootings)) +
+    geom_bar(stat = "identity") + 
+    ggtitle("New York City Shootings Per Borough\n2006 - 2020")
+
+```
+
+### Shootings per year
+
+```{r}
+shootingsByYear = table(df$YEAR)
+
+
+barplot(table(df["YEAR"]), xlab = "Year", ylab = "Shootings", space = 0,
+        main = "New York City Shootings Per Year")
+plot(names(shootingsByYear), as.vector(shootingsByYear), type = "l",
+     xlab = "Year", ylab = "Shootings",
+     main = "New York City Shootings per Year", ylim = c(0, 2500))
+
+shoot_df <- data.frame(
+  Shootings = as.vector(shootingsByYear), Year = names(shootingsByYear)
+)
+
+ggplot(data = shoot_df, aes(x = Year, y = Shootings, group = 1)) +
+    geom_line() + geom_point() + ylim(0, 2200) + 
+    ggtitle("New York City Shootings Per Year\n2006 - 2020")
+```
+
+#### Analysis
+
+Shootings per year declined steadily from 2011 to 2019. Shootings increased significantly in 2020. More analysis is needed to understand if the uptick in shootings was due to the COVID-19 pandemic or some other unrelated cause.
+
+### Shootings Time of Day
+
+```{r}
+barplot(table(df["HOUR"]), xlab = "Time of Day", ylab = "Shootings", space = 0,
+        main = "New York City Shootings Time of Day")
+```
+
+#### Analysis
+
+Shootings are mostly likely to happen during the night time hours. The safest hours are between 6 and 10 am. Shootings steadily increase from 9 am to midnight, then steadily decline from midnight to 8 am.
+
+### Shootings Time of Day Minute
+
+```{r}
+barplot(table(df["MINUTE"]), xlab = "Minute of Hour", ylab = "Shootings", space = 0,
+        main = "New York City Shootings by Minute of Hour")
+```
+
+#### Analysis
+
+Shootings are typically reported in 5 minute intervals around the hour with the most common times being 00 and 30. This is most likely due to exact shooting times being unknown and law enforcement estimating approximate shooting times in official documentation.
+
+## Models
+
+### ARIMA
+
+ Build a model using the `auto.arima()` function to predict future yearly murder statistics: <https://otexts.com/fpp2/arima-r.html>
+
+```{r}
+
+shootingsByYear = table(df$YEAR)
+mymodel <- auto.arima(as.vector(shootingsByYear))
+mymodel
+
+plot.ts(mymodel$residuals)
+
+myforecast <- forecast(mymodel, level=c(95), h = 5)
+plot(myforecast, xlab="Year", ylab="Shootings", main="Forecasted Shooting Stats using ARIMA")
+```
+
+#### Analysis
+
+This model predicts flat shooting statistics in the future. Unfortunately, I do not believe there is enough data for the ARIMA model to accurately predict future yearly shooting statistics. More research, and more granular data is necessary to improve this model.
+
+## Bias
+
+As this data analysis is focused on shooting times and dates, I do not believe there are any sources of bias.
+
+## R Markdown Session Information
+
+```{r}
+sessionInfo()
+```
